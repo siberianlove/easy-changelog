@@ -165,7 +165,7 @@ def parse_version_env(file_content: str, version_key: str = "VERSION") -> str:
     - Returns: The version string if found, otherwise `None`.
     """
     env_vars = []  # or dict {}
-    for line in file_content:
+    for line in file_content.split("\n"):
         if line.startswith("#") or not line.strip():
             continue
         key, value = line.replace("export ", "", 1).strip().split("=", 1)
