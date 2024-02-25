@@ -379,7 +379,7 @@ def find_version_container_changes(
     version_container_changes: list[Commit] = []
     for commit_record in git_log_array(git_directory, version_container):
         sha, title, date = commit_record.split("\n", 2)
-        error, result = git_show(git_directory, sha)
+        error, result = git_show(git_directory, sha, version_container)
         if not error:
             version: str = version_parser(result)
         # TODO: make error message condition independent from system locale
