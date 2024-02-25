@@ -280,6 +280,8 @@ def sort_inside_versions(commits: list[Commit]) -> None:
     - Parameters:
         - `commits`: A list of `Commit` objects.
     """
+    if (len(commits) == 0):
+        return
     version: str = commits[0].version
     version_begin_idx: int = 0
     for i in range(len(commits)):
