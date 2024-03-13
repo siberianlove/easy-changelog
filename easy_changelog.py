@@ -186,7 +186,7 @@ def parse_issue_redmine(title: str) -> str:
         - `title`: The commit title.
     - Returns: The issue ID as a string, or `None` if not found.
     """
-    result = re.search("#\d+", title)
+    result = re.search("#\\d+", title)
     if result:
         return result.group()[1:]
     return None
@@ -223,10 +223,10 @@ def fill_commits_info_redmine(
         - `issue_tool_api_key`: API key for Redmine.
         - `chunk_size` (Optional): The batch size for fetching issues in bulk.
     """
-    batch: list[str] = []
+    batch: list[Commit] = []
     unique_issues: set[str] = set()
     for i in range(len(commits)):
-        if len(unique_issues) >= chunk_size or i == len(commits) - 1:
+        if unique_issues and (len(unique_issues) >= chunk_size or i == len(commits) - 1):
             fill_commits_info_redmine_batch(batch, issue_tool_url, issue_tool_api_key)
             batch = []
             unique_issues = set()
@@ -250,6 +250,9 @@ def fill_commits_info_redmine_batch(
     commit_groups_by_issues = defaultdict(list)
     for c in commits_with_known_issues:
         commit_groups_by_issues[c.issue].append(c)
+
+    if not commits_with_known_issues:
+        return None
 
     request_url: str = f"/issues.json?issue_id={','.join(set(map(lambda i: i.issue, commits_with_known_issues)))}&limit={len(commit_groups_by_issues.keys())}&status_id=*"
     conn: HTTPSConnection = HTTPSConnection(issue_tool_url)
