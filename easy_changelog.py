@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 from http.client import HTTPResponse, HTTPSConnection
-from distutils.version import LooseVersion, StrictVersion
+from packaging import version  # TODO: remove this dependency in final executable
 import json
 import re
 import sys
 import subprocess
 import shlex
-from typing import Any, Union, Tuple, Optional
+from typing import Any, Union, Tuple, Optional, Callable
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 import argparse
@@ -24,6 +24,23 @@ class VersionContainer(Enum):
     maven = "maven"
     npm = "npm"
     env = "env"
+
+    def __str__(self):
+        return self.value
+
+
+class VersionCompareMode(Enum):
+    """`VersionCompareMode`
+
+    An Enum representing different types of version comparison modes.
+
+    """
+
+    full = "full"
+    major = "major"
+    minor = "minor"
+    patch = "patch"
+    labels = "labels"
 
     def __str__(self):
         return self.value
@@ -53,14 +70,14 @@ class Commit:
     tracker: str
 
     def __init__(
-        self,
-        sha: str,
-        title: str,
-        date: str,
-        version: str,
-        issue: str = None,
-        issue_title: str = None,
-        tracker: str = None,
+            self,
+            sha: str,
+            title: str,
+            date: str,
+            version: str,
+            issue: str = None,
+            issue_title: str = None,
+            tracker: str = None,
     ):
         self.sha = sha
         self.title = title
@@ -72,7 +89,7 @@ class Commit:
 
 
 def git_log_array(
-    git_dir: str, file: str = None, from_sha: str = None, to_sha: str = None
+        git_dir: str, file: str = None, from_sha: str = None, to_sha: str = None
 ) -> list[str]:
     """`git_log_array`
 
@@ -108,6 +125,15 @@ def git_log_array(
         exit(result.returncode)
     git_log_history = result.stdout.split("\0")
     return git_log_history
+
+
+def git_head_sha(git_dir: str) -> tuple[Optional[str], Optional[str]]:
+    cmd = ["git", "-C", git_dir, "rev-parse", "--short", "HEAD"]
+    print(f"[CMD]: {shlex.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return result.stderr, None
+    return None, re.sub("\\n", "", result.stdout)
 
 
 def git_show(git_dir: str, sha: str, version_file: str = "pom.xml") -> tuple[Optional[str], Optional[str]]:
@@ -156,8 +182,8 @@ def check_system_requirements():
     if result.returncode != 0:
         print(f"[ERROR] git is probably not installed on your system: {result.stderr}")
         exit(1)
-    git_version: str = result.stdout
-    if LooseVersion(git_version) < LooseVersion(git_required_version):
+    git_version: str = re.sub("[^\\d\\.]", "", result.stdout)
+    if version.parse(git_version) < version.parse(git_required_version):
         print(f"[ERROR] git is older than {git_required_version}. Please update your git version: {git_version}")
         exit(1)
 
@@ -228,7 +254,7 @@ def parse_issue_redmine(title: str) -> Optional[str]:
 
 
 def fill_commits_info_stub(
-    commits: list[Commit], issue_tool_url: str, issue_tool_api_key: str
+        commits: list[Commit], issue_tool_url: str, issue_tool_api_key: str
 ) -> None:
     """`fill_commits_info_stub`
 
@@ -244,10 +270,10 @@ def fill_commits_info_stub(
 
 
 def fill_commits_info_redmine(
-    commits: list[Commit],
-    issue_tool_url: str,
-    issue_tool_api_key: str,
-    chunk_size: int = 100,
+        commits: list[Commit],
+        issue_tool_url: str,
+        issue_tool_api_key: str,
+        chunk_size: int = 100,
 ) -> None:
     """`fill_commits_info_redmine`
 
@@ -271,7 +297,7 @@ def fill_commits_info_redmine(
 
 
 def fill_commits_info_redmine_batch(
-    commits: list[Commit], issue_tool_url: str, issue_tool_api_key: str
+        commits: list[Commit], issue_tool_url: str, issue_tool_api_key: str
 ) -> None:
     """`fill_commits_info_redmine_batch`
 
@@ -311,7 +337,45 @@ def fill_commits_info_redmine_batch(
             commit.issue_title = issue["subject"]
 
 
-def sort_inside_versions(commits: list[Commit]) -> None:
+def version_cmp(v1: str, v2: str, mode: VersionCompareMode) -> int:
+    if not v1 and not v2:
+        return 0
+    if not v1:
+        return -1
+    if not v2:
+        return 1
+    if mode == VersionCompareMode.full or mode == VersionCompareMode.labels:
+        lv1 = version.parse(v1)
+        lv2 = version.parse(v2)
+        return 0 if lv1 == lv2 else -1 if lv1 < lv2 else 1
+
+    component_re = re.compile(r'(\d+ | [a-z]+ | \.)', re.VERBOSE)
+    c1 = [x for x in component_re.split(v1) if x and x != '.']
+    c2 = [x for x in component_re.split(v2) if x and x != '.']
+
+    version_numbers: int = 1 if mode == VersionCompareMode.major else 2 if mode == VersionCompareMode.minor else 3
+    for i in range(version_numbers):
+        if len(c1) < i + 1 or len(c2) < i + 1:
+            return 0 if len(c1) == len(c2) else -1 if len(c1) < len(c2) else 1
+        if c1[i] < c2[i]:
+            return -1
+        if c1[i] > c2[i]:
+            return 1
+    return 0
+
+
+def version_trim(version: str, mode: VersionCompareMode) -> str:
+    if mode == VersionCompareMode.full or mode == VersionCompareMode.labels:
+        return version
+    if mode == VersionCompareMode.major:
+        return version.split(".", maxsplit=1)[0]
+    if mode == VersionCompareMode.minor:
+        return ".".join(version.split(".", maxsplit=2)[0:2])
+    if mode == VersionCompareMode.patch:
+        return ".".join(version.split(".", maxsplit=3)[0:3])
+
+
+def sort_inside_versions(commits: list[Commit], version_cmp_mode: VersionCompareMode) -> None:
     """`sort_inside_versions`
 
     Sorts commits within each version group primarily by tracker, issue, and date.
@@ -323,7 +387,7 @@ def sort_inside_versions(commits: list[Commit]) -> None:
     version: str = commits[0].version
     version_begin_idx: int = 0
     for i in range(len(commits)):
-        if commits[i].version != version:
+        if version_cmp(commits[i].version, version, version_cmp_mode) != 0 or i == len(commits) - 1:
             version_end_idx: int = i if i == len(commits) - 1 else i - 1
             commits[version_begin_idx:version_end_idx] = sorted(
                 commits[version_begin_idx:version_end_idx],
@@ -348,9 +412,10 @@ def filterout_none_issue(commits: list[Commit]) -> list[Commit]:
 
 
 def build_changelog(
-    commits: list[Commit],
-    issue_tool_url: str,
-    version_control_commit_url: str,
+        commits: list[Commit],
+        issue_tool_url: str,
+        version_control_commit_url: str,
+        version_cmp_mode: VersionCompareMode
 ) -> str:
     """`build_changelog`
 
@@ -376,17 +441,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     for i in range(len(commits_reversed)):
         version_date = max(commits_reversed[i].date[:10], version_date)
         print(
-            f"[INFO] building changelog: {int((i/len(commits_reversed))*100)}%",
+            f"[INFO] building changelog: {int((i / len(commits_reversed)) * 100)}%",
             end="\r",
         )
         expected_mod_count = mod_count
-        if version != commits_reversed[i].version or mod_count != expected_mod_count:
+        if version_cmp(version, commits_reversed[i].version, version_cmp_mode) != 0 or mod_count != expected_mod_count:
             changelog = changelog.replace("%version_date%", version_date)
             version_date = ""
             changelog += "\n\n"
             version = commits_reversed[i].version
             mod_count += 1
-            changelog += f"""## [{version.replace("-SNAPSHOT", "")}] - %version_date%"""
+            changelog += f"""## [{version_trim(version, version_cmp_mode)}] - %version_date%"""
         if tracker != commits_reversed[i].tracker or mod_count != expected_mod_count:
             changelog += "\n\n"
             tracker = commits_reversed[i].tracker
@@ -404,7 +469,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 def find_version_container_changes(
-    git_directory: str, version_container: str, version_parser
+        git_directory: str,
+        version_container: str,
+        version_parser: Callable[[str], str],
+        version_cmp_mode: VersionCompareMode
 ) -> list[Commit]:
     """`find_version_container_changes`
     
@@ -429,7 +497,7 @@ def find_version_container_changes(
         else:
             print(f"[ERROR]: {error}")
             exit(1)
-        if version != previous_version:
+        if version_cmp(version, previous_version, version_cmp_mode) != 0:
             version_container_changes.append(Commit(sha, title, date, version))
             previous_version = version
     print(
@@ -439,7 +507,6 @@ def find_version_container_changes(
 
 
 if __name__ == "__main__":
-    check_system_requirements()
     parser = argparse.ArgumentParser()
     # parser.add_argument("--issue-parser", required=True,)
     parser.add_argument(
@@ -469,7 +536,7 @@ if __name__ == "__main__":
         "--version-container-type",
         required=False,
         help="Version container. Some bill of materials or properties file that contains application version. "
-        "Name of this file and it's structure should stay same along all git log history.",
+             "Name of this file and it's structure should stay same along all git log history.",
         type=VersionContainer,
         choices=list(VersionContainer),
         default=VersionContainer.maven,
@@ -482,14 +549,25 @@ if __name__ == "__main__":
         default="CHANGELOG.md",
     )
     parser.add_argument("--version-container-path", required=False, default="pom.xml")
+    parser.add_argument(
+        "--version-compare-mode",
+        help="Version comparison mode. Perform the comparison up to specified version component and ignore others. "
+             "It's useful for example if dev-branch contains patches or labels like `-alpha` or `-rc.0` and you want "
+             "to include these changes to changelog file but do not separate it by different versions.",
+        required=False,
+        type=VersionCompareMode,
+        choices=list(VersionCompareMode),
+        default=VersionCompareMode.full,
+    )
     # parser.add_argument("--log-level", required=False,) ## DEBUG -> CMD -> INFO -> WARN -> ERROR
     # parser.add_argument("--version-include", required=False, default=".*")
     # parser.add_argument("--version-exclude", required=False, default=".*")
-    # parser.add_argument("--version-compare-mode", required=False, default="equal") ## major, minor, patch, labels, equal
     # parser.add_argument("--yanked-filter", required=False,)
     args = parser.parse_args()
 
-    version_container_parser: dict[VersionContainer, Any] = {
+    check_system_requirements()
+
+    version_container_parser: dict[VersionContainer, Callable[[str], str]] = {
         VersionContainer.maven: parse_version_maven,
         VersionContainer.npm: parse_version_npm,
         VersionContainer.env: parse_version_env,
@@ -507,14 +585,20 @@ if __name__ == "__main__":
         args.repository_path,
         args.version_container_path,
         version_container_parser.get(args.version_container_type),
+        args.version_compare_mode
     )
 
+    error, head_sha = git_head_sha(args.repository_path)
+    if error:
+        print(f"[ERROR]: {error}")
+        exit(1)
+
     detailed_commits: list[Commit] = []
-    for i in range(len(version_container_changes) - 1):
+    for i in range(len(version_container_changes)):
         for commit_record in git_log_array(
-            args.repository_path,
-            from_sha=version_container_changes[i].sha,
-            to_sha=version_container_changes[i + 1].sha,
+                args.repository_path,
+                from_sha=version_container_changes[i].sha,
+                to_sha=version_container_changes[i + 1].sha if i + 1 < len(version_container_changes) else head_sha,
         )[:-1]:
             sha, title, date = commit_record.split("\n", 2)
             issue: str = parse_issue_redmine(title)
@@ -526,12 +610,12 @@ if __name__ == "__main__":
         detailed_commits, args.issue_tracker_url, args.issue_tracker_token
     )
 
-    sort_inside_versions(detailed_commits)
+    sort_inside_versions(detailed_commits, args.version_compare_mode)
 
     filtered_commits = list(filterout_none_issue(detailed_commits))
 
     changelog = build_changelog(
-        filtered_commits, args.issue_tracker_url, args.version_control_system_commit_url
+        filtered_commits, args.issue_tracker_url, args.version_control_system_commit_url, args.version_compare_mode
     )
 
     with open(args.output_file, "w") as f:
