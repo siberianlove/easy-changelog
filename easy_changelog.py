@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 from http.client import HTTPResponse, HTTPSConnection
+from distutils.version import LooseVersion, StrictVersion
 import json
 import re
 import sys
 import subprocess
 import shlex
-from typing import Any
+from typing import Any, Union, Tuple, Optional
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 import argparse
@@ -109,7 +110,7 @@ def git_log_array(
     return git_log_history
 
 
-def git_show(git_dir: str, sha: str, version_file: str = "pom.xml") -> tuple[str, str]:
+def git_show(git_dir: str, sha: str, version_file: str = "pom.xml") -> tuple[Optional[str], Optional[str]]:
     """`git_show`
 
     Shows the content of a version file at a specific commit.
@@ -123,8 +124,42 @@ def git_show(git_dir: str, sha: str, version_file: str = "pom.xml") -> tuple[str
     print(f"[CMD]: {shlex.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        return (result.stderr, None)
-    return (None, result.stdout)
+        return result.stderr, None
+    return None, result.stdout
+
+
+def git_is_shallow(git_dir: str) -> tuple[Optional[str], Optional[bool]]:
+    """`git_is_shallow`
+
+    Checks if the git repository is shallow. Requires `git` of version >= 2.15 to be installed.
+    - Parameters:
+        - `git_dir`: Directory of the git repository.
+    - Returns: `True` if the git repository is shallow-repository, `False` otherwise.
+    """
+    cmd = ["git", "-C", git_dir, "rev-parse", "--is-shallow-repository"]
+    print(f"[CMD]: {shlex.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return result.stderr, None
+    return None, "true" in result.stdout.lower()
+
+
+def check_system_requirements():
+    """`check_system_requirements`
+
+    Checks that the system requirements are installed and available on your system. If not, it will raise an exception
+    """
+    git_required_version = "2.15"
+    cmd = ["git", "--version"]
+    print(f"[CMD]: {shlex.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"[ERROR] git is probably not installed on your system: {result.stderr}")
+        exit(1)
+    git_version: str = result.stdout
+    if LooseVersion(git_version) < LooseVersion(git_required_version):
+        print(f"[ERROR] git is older than {git_required_version}. Please update your git version: {git_version}")
+        exit(1)
 
 
 def parse_version_maven(file_content: str) -> str:
@@ -155,7 +190,7 @@ def parse_version_npm(file_content: str) -> str:
     return file_json["version"]
 
 
-def parse_version_env(file_content: str, version_key: str = "VERSION") -> str:
+def parse_version_env(file_content: str, version_key: str = "VERSION") -> Optional[str]:
     """`parse_version_env`
 
     Parses the version from an environment file content.
@@ -178,7 +213,7 @@ def parse_version_env(file_content: str, version_key: str = "VERSION") -> str:
     return None
 
 
-def parse_issue_redmine(title: str) -> str:
+def parse_issue_redmine(title: str) -> Optional[str]:
     """`parse_issue_redmine`
 
     Extracts an issue ID from a commit title assuming it mentions a Redmine issue.
@@ -263,7 +298,7 @@ def fill_commits_info_redmine_batch(
         headers={"X-Redmine-API-Key": issue_tool_api_key},
     )
     response: HTTPResponse = conn.getresponse()
-    result: str = response.read()
+    result: bytes = response.read()
     conn.close()
     if response.status != 200:
         print(
@@ -283,7 +318,7 @@ def sort_inside_versions(commits: list[Commit]) -> None:
     - Parameters:
         - `commits`: A list of `Commit` objects.
     """
-    if (len(commits) == 0):
+    if len(commits) == 0:
         return
     version: str = commits[0].version
     version_begin_idx: int = 0
@@ -361,7 +396,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
             changelog += "\n\n"
             issue = commits_reversed[i].issue
             mod_count += 1
-            changelog += f"- [#{issue}](https://{issue_tool_url}/issue/{issue})  {commits_reversed[i].issue_title} commits: "
+            changelog += f"- [#{issue}](https://{issue_tool_url}/issues/{issue})  {commits_reversed[i].issue_title} commits: "
 
         changelog += f" [{commits_reversed[i].sha}]({version_control_commit_url}{commits_reversed[i].sha})"
     changelog = changelog.replace("%version_date%", version_date)
@@ -385,11 +420,12 @@ def find_version_container_changes(
     for commit_record in git_log_array(git_directory, version_container):
         sha, title, date = commit_record.split("\n", 2)
         error, result = git_show(git_directory, sha, version_container)
+        version: str = ""
         if not error:
-            version: str = version_parser(result)
+            version = version_parser(result)
         # TODO: make error message condition independent from system locale
         elif "exists on disk, but not in" in error:
-            version: str = "0.0"
+            version = "0.0"
         else:
             print(f"[ERROR]: {error}")
             exit(1)
@@ -403,6 +439,7 @@ def find_version_container_changes(
 
 
 if __name__ == "__main__":
+    check_system_requirements()
     parser = argparse.ArgumentParser()
     # parser.add_argument("--issue-parser", required=True,)
     parser.add_argument(
@@ -446,7 +483,9 @@ if __name__ == "__main__":
     )
     parser.add_argument("--version-container-path", required=False, default="pom.xml")
     # parser.add_argument("--log-level", required=False,) ## DEBUG -> CMD -> INFO -> WARN -> ERROR
-    # parser.add_argument("--version-filter", required=False,)
+    # parser.add_argument("--version-include", required=False, default=".*")
+    # parser.add_argument("--version-exclude", required=False, default=".*")
+    # parser.add_argument("--version-compare-mode", required=False, default="equal") ## major, minor, patch, labels, equal
     # parser.add_argument("--yanked-filter", required=False,)
     args = parser.parse_args()
 
@@ -455,6 +494,14 @@ if __name__ == "__main__":
         VersionContainer.npm: parse_version_npm,
         VersionContainer.env: parse_version_env,
     }
+
+    error, is_shallow = git_is_shallow(args.repository_path)
+    if not error and is_shallow:
+        print(f"[WARN] The repository {args.repository_path} is shallow clone. It's important to not use shallow "
+              f"clones to build changelog.")
+    elif error:
+        print(f"[ERROR]: {error}")
+        exit(1)
 
     version_container_changes = find_version_container_changes(
         args.repository_path,
