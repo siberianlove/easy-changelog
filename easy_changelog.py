@@ -506,7 +506,7 @@ def find_version_container_changes(
     return version_container_changes
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     # parser.add_argument("--issue-parser", required=True,)
     parser.add_argument(
@@ -620,3 +620,7 @@ if __name__ == "__main__":
 
     with open(args.output_file, "w") as f:
         f.write(changelog)
+
+
+if __name__ == "__main__":
+    main()
