@@ -23,3 +23,23 @@ jobs:
       with:
         path: dist/*
         name: easy-changelog-${{ matrix.os }}
+
+  build-shiv:
+    runs-on: 'ubuntu-20.04'
+    strategy:
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - run: pip install -r requirements.txt shiv
+    - run: shiv -c easy_changelog -o ./dist/easy-changelog-shiv packaging
+    - run: ./dist/easy-changelog-shiv -h
+    - uses: actions/upload-artifact@v4
+      with:
+        path: dist/*
+        name: easy-changelog-shiv
