@@ -37,6 +37,7 @@ jobs:
         cache: 'pip'
 
     - run: pip install -r requirements.txt shiv
+    - run: mkdir ./dist
     - run: shiv -e easy_changelog:main -c easy_changelog -o ./dist/easy-changelog-shiv packaging
     - run: ./dist/easy-changelog-shiv -h
     - uses: actions/upload-artifact@v4
