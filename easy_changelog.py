@@ -2,7 +2,8 @@
 
 from http.client import HTTPResponse, HTTPSConnection
 from packaging import version  # TODO: remove this dependency in final executable
-import json
+import rapidjson
+import uuid  # TODO: necessary for native build
 import re
 import sys
 import subprocess
@@ -212,7 +213,7 @@ def parse_version_npm(file_content: str) -> str:
         - `file_content`: Content of the package.json file.
     - Returns: The version string.
     """
-    file_json = json.loads(file_content)
+    file_json = rapidjson.loads(file_content, parse_mode=rapidjson.PM_COMMENTS | rapidjson.PM_TRAILING_COMMAS)
     return file_json["version"]
 
 
@@ -330,7 +331,7 @@ def fill_commits_info_redmine_batch(
         print(
             f"[WARN]: Error while getting issue info from redmine: STATUS: {response.status} REASON: {response.reason} BODY: {response.read()}"
         )
-    result_json = json.loads(result)
+    result_json = rapidjson.loads(result, parse_mode=rapidjson.PM_COMMENTS | rapidjson.PM_TRAILING_COMMAS)
     for issue in result_json["issues"]:
         for commit in commit_groups_by_issues[str(issue["id"])]:
             commit.tracker = issue["tracker"]["name"]
