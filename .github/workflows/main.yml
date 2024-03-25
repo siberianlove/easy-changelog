@@ -34,14 +34,14 @@ jobs:
       with:
         image: six8/pyinstaller-alpine
         options: -v ${{ github.workspace }}:/src
-    - run: |
-        /pyinstaller/pyinstaller.sh \
-        --noconfirm \
-        --onefile \
-        --log-level DEBUG \
-        --clean \
-        --name easy-changelog-alpine \
-        easy_changelog.py
+        run: |
+          /pyinstaller/pyinstaller.sh \
+          --noconfirm \
+          --onefile \
+          --log-level DEBUG \
+          --clean \
+          --name easy-changelog-alpine \
+          easy_changelog.py
     - run: ./dist/easy-changelog-alpine -h
     - uses: actions/upload-artifact@v4
       with:
