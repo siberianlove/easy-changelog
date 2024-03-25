@@ -33,15 +33,13 @@ jobs:
     - uses: addnab/docker-run-action@v3
       with:
         image: six8/pyinstaller-alpine
-        options: -v ${{ github.workspace }}:/src
-    - run: |
-        pyinstaller \
-        --noconfirm \
-        --onefile \
-        --log-level DEBUG \
-        --clean \
-        --name easy-changelog-alpine \
-        easy_changelog.py
+        options: | 
+          -v ${{ github.workspace }}:/src --noconfirm \
+          --onefile \
+          --log-level DEBUG \
+          --clean \
+          --name easy-changelog-alpine \
+          easy_changelog.py
     - run: ./dist/easy-changelog-alpine -h
     - uses: actions/upload-artifact@v4
       with:
