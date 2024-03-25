@@ -23,6 +23,30 @@ jobs:
       with:
         path: dist/*
         name: easy-changelog-${{ matrix.os }}
+        
+  build-alpine:
+    runs-on: 'ubuntu-20.04'
+    strategy:
+      fail-fast: false
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/dind@v5
+
+    - run: |
+        docker run --rm \
+        -v "${PWD}:/src" \
+        six8/pyinstaller-alpine \
+        --noconfirm \
+        --onefile \
+        --log-level DEBUG \
+        --clean \
+        --name easy-changelog-alpine \
+        easy_changelog.py
+    - run: ./dist/easy-changelog-alpine -h
+    - uses: actions/upload-artifact@v4
+      with:
+        path: dist/*
+        name: easy-changelog-alpine
 
   build-shiv:
     runs-on: 'ubuntu-20.04'
