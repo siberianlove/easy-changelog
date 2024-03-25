@@ -30,12 +30,12 @@ jobs:
       fail-fast: false
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/dind@v5
-
+    - uses: addnab/docker-run-action@v3
+      with:
+        image: six8/pyinstaller-alpine
+        options: -v ${{ github.workspace }}:/src
     - run: |
-        docker run --rm \
-        -v "${PWD}:/src" \
-        six8/pyinstaller-alpine \
+        pyinstaller \
         --noconfirm \
         --onefile \
         --log-level DEBUG \
