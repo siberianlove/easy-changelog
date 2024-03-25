@@ -33,10 +33,10 @@ jobs:
     - uses: addnab/docker-run-action@v3
       with:
         image: six8/pyinstaller-alpine
-        options: | 
-          -v ${{ github.workspace }}:/src --noconfirm \
+        options: -v ${{ github.workspace }}:/src
     - run: |
-        /pyinstaller/pyinstaller.sh
+        /pyinstaller/pyinstaller.sh \
+        --noconfirm \
         --onefile \
         --log-level DEBUG \
         --clean \
