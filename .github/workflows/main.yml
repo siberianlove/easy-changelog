@@ -32,7 +32,7 @@ jobs:
     - uses: actions/checkout@v4
     - uses: addnab/docker-run-action@v3
       with:
-        image: six8/pyinstaller-alpine
+        image: six8/pyinstaller-alpine:alpine-3.6-pyinstaller-v3.4
         options: -v ${{ github.workspace }}:/src
         run: |
           /pyinstaller/pyinstaller.sh \
