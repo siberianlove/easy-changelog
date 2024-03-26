@@ -4,6 +4,7 @@ from http.client import HTTPResponse, HTTPSConnection
 from packaging import version  # TODO: remove this dependency in final executable
 import rapidjson
 import uuid  # TODO: necessary for native build
+import decimal  # TODO: necessary for native build
 import re
 import sys
 import subprocess
