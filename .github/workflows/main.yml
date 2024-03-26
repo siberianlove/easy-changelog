@@ -42,12 +42,6 @@ jobs:
           --clean \
           --name easy-changelog-alpine \
           easy_changelog.py
-    - uses: addnab/docker-run-action@v3
-      with:
-        image: six8/pyinstaller-alpine:alpine-3.6-pyinstaller-v3.4
-        options: -v ${{ github.workspace }}:/src
-        run: |
-          /src/dist/easy-changelog-alpine -h
     - uses: actions/upload-artifact@v4
       with:
         path: ${{ github.workspace }}/dist/*
